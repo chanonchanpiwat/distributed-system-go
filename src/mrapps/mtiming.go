@@ -7,7 +7,7 @@ package main
 // go build -buildmode=plugin mtiming.go
 //
 
-import "../mr"
+import mr "github.com/chanonchanpiwat/distributed-system-go/src/mr"
 import "strings"
 import "fmt"
 import "os"

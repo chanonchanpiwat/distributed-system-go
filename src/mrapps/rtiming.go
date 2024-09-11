@@ -7,7 +7,7 @@ package main
 // go build -buildmode=plugin rtiming.go
 //
 
-import "../mr"
+import mr "github.com/chanonchanpiwat/distributed-system-go/src/mr"
 import "fmt"
 import "os"
 import "syscall"

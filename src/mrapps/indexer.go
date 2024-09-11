@@ -7,7 +7,7 @@ package main
 //
 
 import "fmt"
-import "../mr"
+import mr "github.com/chanonchanpiwat/distributed-system-go/src/mr"
 
 import "strings"
 import "unicode"
