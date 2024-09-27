@@ -9,7 +9,7 @@ package main
 // Please do not change this file.
 //
 
-import "../mr"
+import mr "github.com/chanonchanpiwat/distributed-system-go/src/mr"
 import "time"
 import "os"
 import "fmt"
