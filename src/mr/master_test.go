@@ -15,6 +15,8 @@ func MakeFilePath() []string {
 	return files
 }
 
+// TO DO: add test on TaskHeap and Completed Queue 
+
 func TestMasterOkTask(t *testing.T) {
 
 	master := MakeMaster(MakeFilePath(), 10)

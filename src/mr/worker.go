@@ -29,98 +29,53 @@ func ihash(key string) int {
 var workWaitTime = 100 * time.Millisecond
 
 func doTask(mapTask *MapTaskArg, reduceTask *ReduceTaskArg, taskId int, mapFunc MapFunc, reduceFunc ReduceFunc) {
-	if mapTask != nil {
-		st := time.Now()
+	st := time.Now()
+	var taskType TaskType
 
+	if mapTask != nil {
+		taskType = MapType
 		err := doMap(mapTask.MapId, mapTask.FileName, mapTask.NumberOfReduce, mapFunc)
 		LogAndExit(err)
 
-		replyTask(ReplyTaskArg{taskId, MapType, int(time.Since(st))}, &ReplyTaskReply{})
 	} else if reduceTask != nil {
-
-		st := time.Now()
-
+		taskType = ReduceType
 		err := doReduce(reduceTask.ReduceId, reduceTask.MapNum, reduceFunc)
 		LogAndExit(err)
 
-		replyTask(ReplyTaskArg{taskId, ReduceType, int(time.Since(st))}, &ReplyTaskReply{})
-
 	}
+
+	replyTask(ReplyTaskArg{taskId, taskType, int(time.Since(st))}, &ReplyTaskReply{})
 }
 
 // main/mrworker.go calls this function.
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
-	workerId := 1
+	workerId := os.Getuid()
 
 	for {
 
 		var task RequestTaskReply
-		requestTask(RequestTaskArg{workerId}, &task)
+		isSuccess := requestTask(RequestTaskArg{workerId}, &task)
+		if !isSuccess {
+			fmt.Println("Unable to contact master worker exit")
+			return
+		}
 
-		fmt.Println(task)
 		if task.Proceed {
 			doTask(task.MapTaskArg, task.ReduceTaskArg, task.TaskId, mapf, reducef)
 		} else if task.Wait {
 			time.Sleep(workWaitTime)
 		} else if task.Exit {
 			fmt.Println("All task is completed")
-			break
+			return
 		}
 
 	}
 
-	// for range 20 {
-
-	// 	var requestTaskArg RequestTaskArg
-	// 	requestTaskArg.WorkerId = workerId
-
-	// 	var task RequestTaskReply
-	// 	requestTask(requestTaskArg, &task)
-
-	// 	mapTask := task.MapTask
-	// 	reduceTask := task.ReduceTask
-
-	// 	if mapTask != nil {
-	// 		fmt.Println("get map task", mapTask)
-	// 		start := time.Now()
-	// 		doMap(mapTask.MapId, mapTask.FileName, mapTask.NumberOfReduce, mapf)
-
-	// 		arg := ReplyTaskArg{
-	// 			mapTask.MapId,
-	// 			MapType,
-	// 			int(time.Since(start)),
-	// 		}
-	// 		var reply ReplyTaskReply
-	// 		replyTask(arg, &reply)
-
-	// 	} else if reduceTask != nil {
-	// 		fmt.Println("get reduce task", reduceTask)
-
-	// 		start := time.Now()
-
-	// 		fmt.Println("rec arg", reduceTask)
-
-	// 		doReduce(reduceTask.ReduceId, reduceTask.ReduceNum, reducef)
-	// 		arg := ReplyTaskArg{
-	// 			reduceTask.ReduceId,
-	// 			ReduceType,
-	// 			int(time.Since(start)),
-	// 		}
-	// 		var reply ReplyTaskReply
-	// 		replyTask(arg, &reply)
-
-	// 	} else if task.Done {
-	// 		fmt.Println("Exit")
-	// 		break
-	// 	}
-
-	// 	time.Sleep(time.Second)
-	// }
 }
 
 func makeMapIntermediate(mapId int, reduceId int) string {
-	return fmt.Sprintf("mr-%d-%d", mapId, reduceId)
+	return fmt.Sprintf("mapper-%d-%d", mapId, reduceId)
 }
 
 func makeOutPut(reduceId int) string {
@@ -132,7 +87,8 @@ type ReduceFunc = func(key string, values []string) string
 
 func doMap(mapId int, fileName string, nReduce int, mapFunc MapFunc) error {
 	/*
-		tmp/mr-{mapIndex}-{*} [* = reduceId]
+		input: fileName
+		intermediate: mapper-{mapId}-{*} [* = reduceId]
 	*/
 	file, err := os.Open(fileName)
 	LogAndExit(err)
@@ -144,6 +100,10 @@ func doMap(mapId int, fileName string, nReduce int, mapFunc MapFunc) error {
 	kvs := mapFunc(fileName, string(bytes))
 
 	keyValuesByPartition := make(map[int][]KeyValue)
+	for id := range nReduce {
+		keyValuesByPartition[id] = []KeyValue{}
+	}
+
 	for _, kv := range kvs {
 		partition := ihash(kv.Key) % nReduce
 		keyValuesByPartition[partition] = append(keyValuesByPartition[partition], kv)
@@ -155,9 +115,7 @@ func doMap(mapId int, fileName string, nReduce int, mapFunc MapFunc) error {
 	}
 
 	for id, kvs := range keyValuesByPartition {
-		// concurrent
 		file, err := os.Create(interMediateFileNames[id])
-		fmt.Println("here", err)
 		LogAndExit(err)
 		defer file.Close()
 
@@ -173,7 +131,8 @@ func doMap(mapId int, fileName string, nReduce int, mapFunc MapFunc) error {
 
 func doReduce(reduceId int, nMap int, reduceFunc ReduceFunc) error {
 	/*
-		tmp/mr-{*}-reduceId [*=MapId]
+		intermediate: mapper-{*}-reduceId [*=MapId]
+		output: mr-out-reduceId 
 	*/
 	intermediateFileNames := make([]string, 0)
 	for mapId := range nMap {

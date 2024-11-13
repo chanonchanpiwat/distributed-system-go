@@ -372,7 +372,13 @@ func (m *Master) server() {
 // main/mrmaster.go calls Done() periodically to find out
 // if the entire job has finished.
 func (m *Master) Done() bool {
-	return m.TaskQueue.IsFinished()
+	isDone := m.TaskQueue.IsFinished()
+	if isDone {
+		// TO DO: add cleanup
+		fmt.Println("All task is completed")
+	}
+
+	return isDone
 }
 
 // create a Master.

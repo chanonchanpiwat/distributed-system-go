@@ -8,8 +8,6 @@ package mr
 
 import (
 	"log"
-	"os"
-	"strconv"
 )
 
 //
@@ -33,9 +31,11 @@ type ExampleReply struct {
 // Can't use the current directory since
 // Athena AFS doesn't support UNIX-domain sockets.
 func masterSock() string {
-	s := "/var/tmp/824-mr-"
-	s += strconv.Itoa(os.Getuid())
-	return s
+	// s := "/var/tmp/824-mr-"
+	// s += strconv.Itoa(os.Getuid())
+
+	// ADD ON: changing socket name "mr-socket"
+	return "mr-socket"
 }
 
 func LogAndExit(err error) {
