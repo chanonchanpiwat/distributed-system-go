@@ -9,7 +9,7 @@ import (
 	"log"
 	"net/rpc"
 	"os"
-	"strconv"
+	"time"
 )
 
 // Map functions return a slice of KeyValue.
@@ -26,42 +26,111 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
+var workWaitTime = 100 * time.Millisecond
+
+func doTask(mapTask *MapTaskArg, reduceTask *ReduceTaskArg, taskId int, mapFunc MapFunc, reduceFunc ReduceFunc) {
+	if mapTask != nil {
+		st := time.Now()
+
+		err := doMap(mapTask.MapId, mapTask.FileName, mapTask.NumberOfReduce, mapFunc)
+		LogAndExit(err)
+
+		replyTask(ReplyTaskArg{taskId, MapType, int(time.Since(st))}, &ReplyTaskReply{})
+	} else if reduceTask != nil {
+
+		st := time.Now()
+
+		err := doReduce(reduceTask.ReduceId, reduceTask.MapNum, reduceFunc)
+		LogAndExit(err)
+
+		replyTask(ReplyTaskArg{taskId, ReduceType, int(time.Since(st))}, &ReplyTaskReply{})
+
+	}
+}
+
 // main/mrworker.go calls this function.
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
+	workerId := 1
 
+	for {
 
-	// TODO switching logic
-	var requestTaskArg RequestTaskArg
-	requestTaskArg.WorkerId = 1
+		var task RequestTaskReply
+		requestTask(RequestTaskArg{workerId}, &task)
 
-	var task RequestTaskReply
-	requestTask(requestTaskArg, &task)
-	mapTask := task.MapTask
-	reduceTask := task.ReduceTask
-	if mapTask != nil {
-		doMap(mapTask.MapId, mapTask.FileName, mapTask.NumberOfIntermediate, mapf)
-	} else if reduceTask != nil {
+		fmt.Println(task)
+		if task.Proceed {
+			doTask(task.MapTaskArg, task.ReduceTaskArg, task.TaskId, mapf, reducef)
+		} else if task.Wait {
+			time.Sleep(workWaitTime)
+		} else if task.Exit {
+			fmt.Println("All task is completed")
+			break
+		}
 
 	}
-	// Your worker implementation here.
 
-	// uncomment to send the Example RPC to the master.
-	// CallExample()
+	// for range 20 {
+
+	// 	var requestTaskArg RequestTaskArg
+	// 	requestTaskArg.WorkerId = workerId
+
+	// 	var task RequestTaskReply
+	// 	requestTask(requestTaskArg, &task)
+
+	// 	mapTask := task.MapTask
+	// 	reduceTask := task.ReduceTask
+
+	// 	if mapTask != nil {
+	// 		fmt.Println("get map task", mapTask)
+	// 		start := time.Now()
+	// 		doMap(mapTask.MapId, mapTask.FileName, mapTask.NumberOfReduce, mapf)
+
+	// 		arg := ReplyTaskArg{
+	// 			mapTask.MapId,
+	// 			MapType,
+	// 			int(time.Since(start)),
+	// 		}
+	// 		var reply ReplyTaskReply
+	// 		replyTask(arg, &reply)
+
+	// 	} else if reduceTask != nil {
+	// 		fmt.Println("get reduce task", reduceTask)
+
+	// 		start := time.Now()
+
+	// 		fmt.Println("rec arg", reduceTask)
+
+	// 		doReduce(reduceTask.ReduceId, reduceTask.ReduceNum, reducef)
+	// 		arg := ReplyTaskArg{
+	// 			reduceTask.ReduceId,
+	// 			ReduceType,
+	// 			int(time.Since(start)),
+	// 		}
+	// 		var reply ReplyTaskReply
+	// 		replyTask(arg, &reply)
+
+	// 	} else if task.Done {
+	// 		fmt.Println("Exit")
+	// 		break
+	// 	}
+
+	// 	time.Sleep(time.Second)
+	// }
 }
 
 func makeMapIntermediate(mapId int, reduceId int) string {
-	return "tmp/" + "mr-" + strconv.Itoa(mapId) + "-" + strconv.Itoa(reduceId)
+	return fmt.Sprintf("mr-%d-%d", mapId, reduceId)
 }
 
 func makeOutPut(reduceId int) string {
-	return "mr-out-" + strconv.Itoa(reduceId)
+	return fmt.Sprintf("mr-out-%d", reduceId)
 }
 
 type MapFunc = func(filename string, contents string) []KeyValue
 type ReduceFunc = func(key string, values []string) string
 
-func doMap(mapId int, fileName string, nReduce int, mapFunc MapFunc) {
+func doMap(mapId int, fileName string, nReduce int, mapFunc MapFunc) error {
 	/*
 		tmp/mr-{mapIndex}-{*} [* = reduceId]
 	*/
@@ -72,8 +141,7 @@ func doMap(mapId int, fileName string, nReduce int, mapFunc MapFunc) {
 	bytes, err := io.ReadAll(file)
 	LogAndExit(err)
 
-	content := string(bytes)
-	kvs := mapFunc(fileName, content)
+	kvs := mapFunc(fileName, string(bytes))
 
 	keyValuesByPartition := make(map[int][]KeyValue)
 	for _, kv := range kvs {
@@ -87,7 +155,9 @@ func doMap(mapId int, fileName string, nReduce int, mapFunc MapFunc) {
 	}
 
 	for id, kvs := range keyValuesByPartition {
+		// concurrent
 		file, err := os.Create(interMediateFileNames[id])
+		fmt.Println("here", err)
 		LogAndExit(err)
 		defer file.Close()
 
@@ -97,14 +167,16 @@ func doMap(mapId int, fileName string, nReduce int, mapFunc MapFunc) {
 		_, err = file.Write(content)
 		LogAndExit(err)
 	}
+
+	return nil
 }
 
-func doReduce(reduceId int, nReduce int, reduceFunc ReduceFunc) {
+func doReduce(reduceId int, nMap int, reduceFunc ReduceFunc) error {
 	/*
 		tmp/mr-{*}-reduceId [*=MapId]
 	*/
 	intermediateFileNames := make([]string, 0)
-	for mapId := range nReduce {
+	for mapId := range nMap {
 		intermediateFileNames = append(intermediateFileNames, makeMapIntermediate(mapId, reduceId))
 	}
 
@@ -141,6 +213,8 @@ func doReduce(reduceId int, nReduce int, reduceFunc ReduceFunc) {
 	}
 
 	w.Flush()
+
+	return nil
 }
 
 func requestTask(arg RequestTaskArg, reply *RequestTaskReply) bool {
@@ -148,8 +222,9 @@ func requestTask(arg RequestTaskArg, reply *RequestTaskReply) bool {
 	return isSuccess
 }
 
-func replyTask() {
-
+func replyTask(arg ReplyTaskArg, reply *ReplyTaskReply) bool {
+	isSuccess := call("Master.ReplyTask", arg, reply)
+	return isSuccess
 }
 
 // example function to show how to make an RPC call to the master.

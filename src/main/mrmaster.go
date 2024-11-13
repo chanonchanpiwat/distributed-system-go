@@ -2,17 +2,19 @@ package main
 
 //
 // start the master process, which is implemented
-// in ../mr/master.go
+// in mr "github.com/chanonchanpiwat/distributed-system-go/src/mr"/master.go
 //
 // go run mrmaster.go pg*.txt
 //
 // Please do not change this file.
 //
 
-import mr "github.com/chanonchanpiwat/distributed-system-go/src/mr"
-import "time"
-import "os"
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"time"
+	mr "github.com/chanonchanpiwat/distributed-system-go/src/mr"
+)
 
 func main() {
 	if len(os.Args) < 2 {

@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var waitTime = 10 * time.Millisecond
+var waitTime = 10 * time.Second
 
 type TaskType int
 
@@ -201,7 +201,7 @@ func (t *TaskQueue) GetTask() TaskResponse {
 		onError := func() {
 			t.lock.Lock()
 			defer t.lock.Unlock()
-			fmt.Printf("task id: %d in-completed\n", task.TaskId)
+			fmt.Printf("task id: %d is not completed\n", task.TaskId)
 
 			t.tasks.update(task, NotStarted)
 
@@ -266,8 +266,8 @@ type MapTaskArg struct {
 	NumberOfReduce int
 }
 type ReduceTaskArg struct {
-	ReduceId  int
-	ReduceNum int
+	ReduceId int
+	MapNum   int
 }
 
 func (m MapTaskArg) String() string {
@@ -275,7 +275,7 @@ func (m MapTaskArg) String() string {
 }
 
 func (r ReduceTaskArg) String() string {
-	return fmt.Sprintf("reduceId: %d nReduce: %d", r.ReduceId, r.ReduceNum)
+	return fmt.Sprintf("reduceId: %d nReduce: %d", r.ReduceId, r.MapNum)
 }
 
 type Master struct {
@@ -288,10 +288,12 @@ type RequestTaskArg struct {
 }
 
 type RequestTaskReply struct {
-	Proceed bool
-	Wait    bool
-	Exit    bool
-	Task    MrTask
+	Proceed       bool
+	Wait          bool
+	Exit          bool
+	TaskId        int
+	MapTaskArg    *MapTaskArg
+	ReduceTaskArg *ReduceTaskArg
 }
 
 type ReplyTaskArg struct {
@@ -317,7 +319,15 @@ func (m *Master) RequestTask(arg RequestTaskArg, reply *RequestTaskReply) error 
 	}
 
 	reply.Proceed = true
-	reply.Task = res.Task
+	reply.TaskId = res.Task.TaskId
+
+	Switch(&res.Task.TaskContent, func(m MapTaskArg) bool {
+		reply.MapTaskArg = &m
+		return true
+	}, func(r ReduceTaskArg) bool {
+		reply.ReduceTaskArg = &r
+		return true
+	})
 
 	go func() {
 		DoJobWithTimeout(func() bool { return m.CompletedQueue.Has(res.Task.TaskId) }, res.SuccessCallback, res.ErrorCallback)
@@ -381,7 +391,7 @@ func MakeMaster(files []string, nReduce int) *Master {
 	}
 
 	for r := range nReduce {
-		reduceTask := Either[MapTaskArg, ReduceTaskArg]{ReduceTaskArg{r, nReduce}}
+		reduceTask := Either[MapTaskArg, ReduceTaskArg]{ReduceTaskArg{r, len(files)}}
 		mrTasks = append(mrTasks, &MrTask{TaskId, NotStarted, reduceTask, TaskId})
 		TaskId++
 	}

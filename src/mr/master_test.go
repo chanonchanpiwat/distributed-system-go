@@ -23,13 +23,13 @@ func TestMasterOkTask(t *testing.T) {
 	master.RequestTask(RequestTaskArg{1}, &task)
 
 	var replyTask ReplyTaskReply
-	master.ReplyTask(ReplyTaskArg{task.Task.TaskId, MapType, 0}, &replyTask)
+	master.ReplyTask(ReplyTaskArg{task.TaskId, MapType, 0}, &replyTask)
 
 	time.Sleep(100 * time.Millisecond)
 
 	utils.Filter(master.TaskQueue.tasks, func(ts *MrTask, _ int) bool {
-		if ts.TaskId == task.Task.TaskId && ts.Status != Completed {
-			t.Errorf("task id %d must be completed", task.Task.TaskId)
+		if ts.TaskId == task.TaskId && ts.Status != Completed {
+			t.Errorf("task id %d must be completed", task.TaskId)
 		}
 		return true
 	})
@@ -47,8 +47,8 @@ func TestMasterTimeOutTask(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	utils.Filter(master.TaskQueue.tasks, func(ts *MrTask, _ int) bool {
-		if ts.TaskId == task.Task.TaskId && ts.Status != NotStarted{
-			t.Errorf("task id %d must be revert to not start", task.Task.TaskId)
+		if ts.TaskId == task.TaskId && ts.Status != NotStarted{
+			t.Errorf("task id %d must be revert to not start", task.TaskId)
 		}
 		return true
 	})

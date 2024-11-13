@@ -6,8 +6,11 @@ package mr
 // remember to capitalize all names.
 //
 
-import "os"
-import "strconv"
+import (
+	"log"
+	"os"
+	"strconv"
+)
 
 //
 // example to show how to declare the arguments
@@ -33,4 +36,10 @@ func masterSock() string {
 	s := "/var/tmp/824-mr-"
 	s += strconv.Itoa(os.Getuid())
 	return s
+}
+
+func LogAndExit(err error) {
+	if err != nil {
+		log.Fatalln(err)
+	}
 }
